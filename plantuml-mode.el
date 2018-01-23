@@ -237,13 +237,16 @@ The feature requires Python."
   "Set the desired output type (as TYPE) for the current buffer.
 If the
 major mode of the current buffer mode is not plantuml-mode, set the
-default output type for new buffers."
+default output type for other windows."
   (interactive (list (plantuml-read-output-type)))
   (setq plantuml-output-type type))
 
 (defun plantuml-is-image-output-p ()
   "Return true if the diagram output format is an image, false if it's text based."
   (not (equal "utxt" plantuml-output-type)))
+
+(defun plantuml--image-p ()
+  (and (display-images-p) (plantuml-is-image-output-p)))
 
 (defun plantuml-output-type-opt ()
   "Create the flag to pass to PlantUML to produce the selected output format."
@@ -260,39 +263,38 @@ default output type for new buffers."
 (defun plantuml-preview-string (prefix string)
   "Preview diagram from PlantUML sources (as STRING), using prefix (as PREFIX)
 to choose where to display it:
-- 4  (when prefixing the command with C-u) -> new window
-- 16 (when prefixing the command with C-u C-u) -> new frame.
-- else -> new buffer"
-  (let ((b (get-buffer plantuml-preview-buffer)))
-    (when b
-      (kill-buffer b)))
-  (let* ((imagep (and (display-images-p)
-                      (plantuml-is-image-output-p)))
-         (process-connection-type nil)
-         (buf (get-buffer-create plantuml-preview-buffer))
-         (coding-system-for-read (and imagep 'binary))
-         (coding-system-for-write (and imagep 'binary)))
-    (if plantuml-use-server
-        (plantuml--preview-string-with-server prefix string imagep)
-      (let ((ps (plantuml-start-process buf)))
-        (process-send-string ps string)
-        (process-send-eof ps)
-        (set-process-sentinel ps
-                              (lambda (_ps event)
-                                (unless (equal event "finished\n")
-                                  (error "PLANTUML Preview failed: %s" event))
-                                (plantuml--switch-to-preview-buffer prefix imagep)))))))
+- 4  (when prefixing the command with C-u) -> other frame
+- else -> other window"
+  (if plantuml-use-server
+      (plantuml--preview-string-with-server prefix string)
+    (plantuml--preview-string-with-jar prefix string)))
 
-(defun plantuml--preview-string-with-server (prefix string imagep)
+(defun plantuml--preview-string-with-jar (prefix string)
+  (let* ((process-connection-type nil)
+        (buf (generate-new-buffer " *PlantUML Output*"))
+        (coding-system-for-read (when (plantuml--image-p) 'binary))
+        (coding-system-for-write (when (plantuml--image-p)'binary))
+        (ps (plantuml-start-process buf)))
+    (process-send-string ps string)
+    (process-send-eof ps)
+    (set-process-sentinel ps
+                          (lambda (ps event)
+                            (unless (equal event "finished\n")
+                              (error "PLANTUML Preview failed: %s" event))
+                            (with-current-buffer (process-buffer ps)
+                              (plantuml--set-content-to-preview-buffer (buffer-string)))
+                            (plantuml--display-preview-buffer prefix)))))
+
+(defun plantuml--preview-string-with-server (prefix string)
   (let ((default-directory (file-name-directory (locate-library "plantuml-mode")))
         (buffer (generate-new-buffer " *PlantUML Compress*")))
     (let ((process (start-process "PLANTUML COMPRESS" buffer "python" "plantuml-compress.py")))
       (set-process-sentinel process (lambda (ps _)
-                                      (plantuml--string-compress-handler ps prefix imagep)))
+                                      (plantuml--string-compress-handler ps prefix)))
       (process-send-string process (format "%s\n" string))
       (process-send-eof process))))
 
-(defun plantuml--string-compress-handler (process prefix imagep)
+(defun plantuml--string-compress-handler (process prefix)
   (let ((exit-status (process-exit-status process)))
     (unless (= 0 exit-status)
       (error "PLANTUML Preview failed: compression failed with %d" exit-status))
@@ -301,31 +303,29 @@ to choose where to display it:
                     (lambda (&rest _ignore)
                       (delete-region (point-min)
                                      (search-forward "\n\n"))
-                      (image-mode)
-                      (let ((result (buffer-string)))
-                        (with-current-buffer plantuml-preview-buffer
-                          (erase-buffer)
-                          (insert result)
-                          (setq buffer-read-only t)))
-                      (plantuml--switch-to-preview-buffer prefix imagep))))))
+                      (plantuml--set-content-to-preview-buffer (buffer-string))
+                      (plantuml--display-preview-buffer prefix))))))
 
-(defun plantuml--switch-to-preview-buffer (prefix imagep)
-  (cond
-   ((= prefix 16)
-    (switch-to-buffer-other-frame plantuml-preview-buffer))
-   ((= prefix 4)
-    (switch-to-buffer-other-window plantuml-preview-buffer))
-   (t (switch-to-buffer plantuml-preview-buffer)))
-  (when imagep
-    (image-mode)
-    (set-buffer-multibyte t)))
+(defun plantuml--set-content-to-preview-buffer (string)
+  (let ((buf (get-buffer-create plantuml-preview-buffer)))
+    (with-current-buffer buf
+      (setq buffer-read-only t)
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert string))
+      (when (plantuml--image-p)
+        (image-mode)
+        (set-buffer-multibyte t)))))
+
+(defun plantuml--display-preview-buffer (prefix)
+  (cond ((= prefix 4) (display-buffer-other-frame plantuml-preview-buffer))
+        (t (display-buffer plantuml-preview-buffer))))
 
 (defun plantuml-preview-buffer (prefix)
   "Preview diagram from the PlantUML sources in the current buffer.
 Uses prefix (as PREFIX) to choose where to display it:
-- 4  (when prefixing the command with C-u) -> new window
-- 16 (when prefixing the command with C-u C-u) -> new frame.
-- else -> new buffer"
+- 4  (when prefixing the command with C-u) -> other frame
+- else -> other window"
   (interactive "p")
   (plantuml-preview-string prefix (buffer-string)))
 
@@ -333,9 +333,8 @@ Uses prefix (as PREFIX) to choose where to display it:
   "Preview diagram from the PlantUML sources in from BEGIN to END.
 Uses the current region when called interactively.
 Uses prefix (as PREFIX) to choose where to display it:
-- 4  (when prefixing the command with C-u) -> new window
-- 16 (when prefixing the command with C-u C-u) -> new frame.
-- else -> new buffer"
+- 4  (when prefixing the command with C-u) -> other frame
+- else -> other window"
   (interactive "p\nr")
   (plantuml-preview-string prefix (concat "@startuml\n"
                                       (buffer-substring-no-properties
@@ -345,9 +344,8 @@ Uses prefix (as PREFIX) to choose where to display it:
 (defun plantuml-preview-current-block (prefix)
   "Preview diagram from the PlantUML sources from the previous @startuml to the next @enduml.
 Uses prefix (as PREFIX) to choose where to display it:
-- 4  (when prefixing the command with C-u) -> new window
-- 16 (when prefixing the command with C-u C-u) -> new frame.
-- else -> new buffer"
+- 4  (when prefixing the command with C-u) -> other frame
+- else -> other window"
   (interactive "p")
   (save-restriction
     (narrow-to-region
@@ -358,9 +356,8 @@ Uses prefix (as PREFIX) to choose where to display it:
   "Preview diagram from the PlantUML sources.
 Uses the current region if one is active, or the entire buffer otherwise.
 Uses prefix (as PREFIX) to choose where to display it:
-- 4  (when prefixing the command with C-u) -> new window
-- 16 (when prefixing the command with C-u C-u) -> new frame.
-- else -> new buffer"
+- 4  (when prefixing the command with C-u) -> other frame
+- else -> other window"
   (interactive "p")
   (if mark-active
       (plantuml-preview-region prefix (region-beginning) (region-end))
