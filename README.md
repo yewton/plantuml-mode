@@ -1,5 +1,7 @@
-[![MELPA](http://melpa.org/packages/plantuml-mode-badge.svg)](http://melpa.org/#/plantuml-mode) [![MELPA Stable](http://stable.melpa.org/packages/plantuml-mode-badge.svg)](http://stable.melpa.org/#/plantuml-mode) [![Build Status](https://travis-ci.org/skuro/plantuml-mode.svg?branch=master)](https://travis-ci.org/skuro/plantuml-mode)
+This branch has my own extension of `plantuml-mode` such as:
 
+* PlantUML Server support
+* Display preview in other window (not switch)
 
 # PlantUML mode for Emacs
 
@@ -31,6 +33,7 @@ Also, to enable preview you need to tell `plantuml-mode` where to locate the Pla
 - Syntax highlight
 - Autocompletion
 - Preview of buffer or region
+- PlantUML Server support
 
 # Enable the major mode
 
@@ -61,9 +64,7 @@ The following shortcuts are enabled by default:
 
     C-c C-c  plantuml-preview: renders a PlantUML diagram from the current buffer in the best supported format
 
-    C-u C-c C-c  plantuml-preview in other window
-
-    C-u C-u C-c C-c plantuml-preview in other frame
+    C-u C-c C-c  plantuml-preview in other frame
 
 ## Integration with `org-mode`
 
@@ -83,6 +84,25 @@ Then you can edit a `plantuml` code block with `plantuml-mode` by hitting `C-'` 
 ```
 
 When in the `plantuml-mode` buffer you can then hit again `C-'` to return to the original `org-mode` document.
+
+## Use PlantUML Server
+
+You can use [PlantUML Server](http://plantuml.com/server) instead of `plantuml.jar` by:
+
+```elisp
+(setq plantuml-use-server t)
+```
+
+The default server url is `http://www.plantuml.com/plantuml/`, but you can specify your own PlantUML Server:
+
+```elisp
+(setq plantuml-server-url "http://127.0.0.1:9090/")
+```
+
+You can download `plantuml.war` from [here](http://plantuml.com/download) and run it with
+[Jetty Runner](http://www.eclipse.org/jetty/documentation/9.4.8.v20171121/runner.html#jetty-runner).
+
+PlantUML Server is also available at [Docker Hub](https://hub.docker.com/r/plantuml/plantuml-server/).
 
 # Migration from `puml-mode`
 
