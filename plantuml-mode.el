@@ -61,6 +61,7 @@
 
 ;;; Code:
 (require 'thingatpt)
+(require 'plantuml-const)
 
 (defgroup plantuml-mode nil
   "Major mode for editing plantuml file."
@@ -157,8 +158,11 @@ The feature requires Python."
 
 (defun plantuml-init ()
   "Initialize the keywords or builtins from the cmdline language output."
-  (unless (or (eq system-type 'cygwin) (file-exists-p plantuml-jar-path))
-    (error "Could not find plantuml.jar at %s" plantuml-jar-path))
+  (if (or (eq system-type 'cygwin) (file-exists-p plantuml-jar-path))
+      (plantuml--init-with-jar)
+    (plantuml---init-with-defaults)))
+
+(defun plantuml--init-with-jar ()
   (with-temp-buffer
     (let ((cmd-args (append (list plantuml-java-command nil t nil)
                             (plantuml-render-command "-charset" "UTF-8" "-language"))))
@@ -196,6 +200,12 @@ The feature requires Python."
                           (split-string
                            (buffer-substring-no-properties pos (point)))))))
           (setq found (search-forward ";" nil nil)))))))
+
+(defun plantuml---init-with-defaults ()
+  (setq plantuml-types plantuml-default-types
+        plantuml-keywords plantuml-default-keywords
+        plantuml-preprocessors plantuml-default-preprocessors
+        plantuml-builtins plantuml-default-builtins))
 
 (defconst plantuml-preview-buffer "*PLANTUML Preview*")
 
